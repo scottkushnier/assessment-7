@@ -16,7 +16,7 @@ const tokens = {};
 
 /** before each test, insert u1, u2, and u3  [u3 is admin] */
 
-beforeEach(async function() {
+beforeEach(async function () {
   async function _pwd(password) {
     return await bcrypt.hash(password, 1);
   }
@@ -24,10 +24,11 @@ beforeEach(async function() {
   let sampleUsers = [
     ["u1", "fn1", "ln1", "email1", "phone1", await _pwd("pwd1"), false],
     ["u2", "fn2", "ln2", "email2", "phone2", await _pwd("pwd2"), false],
-    ["u3", "fn3", "ln3", "email3", "phone3", await _pwd("pwd3"), true]
+    ["u3", "fn3", "ln3", "email3", "phone3", await _pwd("pwd3"), true],
   ];
 
   for (let user of sampleUsers) {
+    console.log("inserting for:", user);
     await db.query(
       `INSERT INTO users VALUES ($1, $2, $3, $4, $5, $6, $7)`,
       user
@@ -36,18 +37,18 @@ beforeEach(async function() {
   }
 });
 
-describe("POST /auth/register", function() {
-  test("should allow a user to register in", async function() {
-    const response = await request(app)
-      .post("/auth/register")
-      .send({
-        username: "new_user",
-        password: "new_password",
-        first_name: "new_first",
-        last_name: "new_last",
-        email: "new@newuser.com",
-        phone: "1233211221"
-      });
+describe("POST /auth/register", function () {
+  test("should allow a user to register in", async function () {
+    const response = await request(app).post("/auth/register").send({
+      username: "new_user",
+      password: "new_password",
+      first_name: "new_first",
+      last_name: "new_last",
+      email: "new@newuser.com",
+      phone: "1233211221",
+      isAdmin: false,
+    });
+    // console.log("response: ", response);
     expect(response.statusCode).toBe(201);
     expect(response.body).toEqual({ token: expect.any(String) });
 
@@ -56,33 +57,49 @@ describe("POST /auth/register", function() {
     expect(admin).toBe(false);
   });
 
-  test("should not allow a user to register with an existing username", async function() {
-    const response = await request(app)
-      .post("/auth/register")
-      .send({
-        username: "u1",
-        password: "pwd1",
-        first_name: "new_first",
-        last_name: "new_last",
-        email: "new@newuser.com",
-        phone: "1233211221"
-      });
+  // SDK - Bug #1
+  test("should allow an admin user to register", async function () {
+    const response = await request(app).post("/auth/register").send({
+      username: "new_admin",
+      password: "new_password",
+      first_name: "admin_first",
+      last_name: "admin_last",
+      email: "admin@newuser.com",
+      phone: "4567891234",
+      isAdmin: true,
+    });
+    // console.log("response: ", response);
+    expect(response.statusCode).toBe(201);
+    expect(response.body).toEqual({ token: expect.any(String) });
+
+    let { username, admin } = jwt.verify(response.body.token, SECRET_KEY);
+    expect(username).toBe("new_admin");
+    expect(admin).toBe(true);
+  });
+
+  test("should not allow a user to register with an existing username", async function () {
+    const response = await request(app).post("/auth/register").send({
+      username: "u1",
+      password: "pwd1",
+      first_name: "new_first",
+      last_name: "new_last",
+      email: "new@newuser.com",
+      phone: "1233211221",
+    });
     expect(response.statusCode).toBe(400);
     expect(response.body).toEqual({
       status: 400,
-      message: `There already exists a user with username 'u1'`
+      message: `There already exists a user with username 'u1'`,
     });
   });
 });
 
-describe("POST /auth/login", function() {
-  test("should allow a correct username/password to log in", async function() {
-    const response = await request(app)
-      .post("/auth/login")
-      .send({
-        username: "u1",
-        password: "pwd1"
-      });
+describe("POST /auth/login", function () {
+  test("should allow a correct username/password to log in", async function () {
+    const response = await request(app).post("/auth/login").send({
+      username: "u1",
+      password: "pwd1",
+    });
     expect(response.statusCode).toBe(200);
     expect(response.body).toEqual({ token: expect.any(String) });
 
@@ -92,59 +109,61 @@ describe("POST /auth/login", function() {
   });
 });
 
-describe("GET /users", function() {
-  test("should deny access if no token provided", async function() {
+describe("GET /users", function () {
+  test("should deny access if no token provided", async function () {
     const response = await request(app).get("/users");
     expect(response.statusCode).toBe(401);
   });
 
-  test("should list all users", async function() {
+  test("should list all users", async function () {
     const response = await request(app)
       .get("/users")
-      .send({ _token: tokens.u1 });
+      .set("_token", `${tokens.u1}`);
     expect(response.statusCode).toBe(200);
     expect(response.body.users.length).toBe(3);
   });
 });
 
-describe("GET /users/[username]", function() {
-  test("should deny access if no token provided", async function() {
+describe("GET /users/[username]", function () {
+  test("should deny access if no token provided", async function () {
     const response = await request(app).get("/users/u1");
     expect(response.statusCode).toBe(401);
   });
 
-  test("should return data on u1", async function() {
+  test("should return data on u1", async function () {
     const response = await request(app)
       .get("/users/u1")
-      .send({ _token: tokens.u1 });
+      .set("_token", `${tokens.u1}`);
     expect(response.statusCode).toBe(200);
     expect(response.body.user).toEqual({
       username: "u1",
       first_name: "fn1",
       last_name: "ln1",
       email: "email1",
-      phone: "phone1"
+      phone: "phone1",
     });
   });
 });
 
-describe("PATCH /users/[username]", function() {
-  test("should deny access if no token provided", async function() {
+describe("PATCH /users/[username]", function () {
+  test("should deny access if no token provided", async function () {
     const response = await request(app).patch("/users/u1");
     expect(response.statusCode).toBe(401);
   });
 
-  test("should deny access if not admin/right user", async function() {
+  test("should deny access if not admin/right user", async function () {
     const response = await request(app)
       .patch("/users/u1")
-      .send({ _token: tokens.u2 }); // wrong user!
+      .set("_token", `${tokens.u2}`); // wrong user!
     expect(response.statusCode).toBe(401);
   });
 
-  test("should patch data if admin", async function() {
+  // SDK - Bug #4 - allow users to change self even if not admin
+  test("should patch data if changing self", async function () {
     const response = await request(app)
       .patch("/users/u1")
-      .send({ _token: tokens.u3, first_name: "new-fn1" }); // u3 is admin
+      .send({ first_name: "new-fn1" }) // u3 is admin
+      .set("_token", `${tokens.u1}`);
     expect(response.statusCode).toBe(200);
     expect(response.body.user).toEqual({
       username: "u1",
@@ -153,51 +172,79 @@ describe("PATCH /users/[username]", function() {
       email: "email1",
       phone: "phone1",
       admin: false,
-      password: expect.any(String)
+      password: expect.any(String),
     });
   });
 
-  test("should disallowing patching not-allowed-fields", async function() {
+  test("should patch data if admin", async function () {
     const response = await request(app)
       .patch("/users/u1")
-      .send({ _token: tokens.u1, admin: true });
+      .send({ first_name: "new-fn1" }) // u3 is admin
+      .set("_token", `${tokens.u3}`);
+    expect(response.statusCode).toBe(200);
+    expect(response.body.user).toEqual({
+      username: "u1",
+      first_name: "new-fn1",
+      last_name: "ln1",
+      email: "email1",
+      phone: "phone1",
+      admin: false,
+      password: expect.any(String),
+    });
+  });
+
+  test("should disallowing patching not-allowed-fields", async function () {
+    const response = await request(app)
+      .patch("/users/u1")
+      .send({ admin: true })
+      .set("_token", `${tokens.u1}`);
     expect(response.statusCode).toBe(401);
   });
 
-  test("should return 404 if cannot find", async function() {
+  // SDK - Bug #5 - don't allow patching of certain fields
+  test("disallow patching of username field", async function () {
+    const response = await request(app)
+      .patch("/users/u3")
+      .send({ username: "pops" })
+      .set("_token", `${tokens.u3}`);
+    expect(response.statusCode).toBe(401);
+  });
+
+  test("should return 404 if cannot find", async function () {
     const response = await request(app)
       .patch("/users/not-a-user")
-      .send({ _token: tokens.u3, first_name: "new-fn" }); // u3 is admin
+      .send({ first_name: "new-fn" })
+      .set("_token", `${tokens.u3}`); // u3 is admin
     expect(response.statusCode).toBe(404);
   });
 });
 
-describe("DELETE /users/[username]", function() {
-  test("should deny access if no token provided", async function() {
+describe("DELETE /users/[username]", function () {
+  test("should deny access if no token provided", async function () {
     const response = await request(app).delete("/users/u1");
     expect(response.statusCode).toBe(401);
   });
 
-  test("should deny access if not admin", async function() {
+  test("should deny access if not admin", async function () {
     const response = await request(app)
       .delete("/users/u1")
-      .send({ _token: tokens.u1 });
+      .set("_token", `${tokens.u1}`);
     expect(response.statusCode).toBe(401);
   });
 
-  test("should allow if admin", async function() {
+  test("should allow if admin", async function () {
     const response = await request(app)
       .delete("/users/u1")
-      .send({ _token: tokens.u3 }); // u3 is admin
+      .set("_token", `${tokens.u3}`); // u3 is admin
     expect(response.statusCode).toBe(200);
     expect(response.body).toEqual({ message: "deleted" });
   });
 });
 
-afterEach(async function() {
+afterEach(async function () {
   await db.query("DELETE FROM users");
 });
 
-afterAll(function() {
+afterAll(function () {
   db.end();
 });

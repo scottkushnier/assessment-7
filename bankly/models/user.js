@@ -1,14 +1,21 @@
-const bcrypt = require('bcrypt');
-const db = require('../db');
-const ExpressError = require('../helpers/expressError');
-const sqlForPartialUpdate = require('../helpers/partialUpdate');
+const bcrypt = require("bcrypt");
+const db = require("../db");
+const ExpressError = require("../helpers/expressError");
+const sqlForPartialUpdate = require("../helpers/partialUpdate");
 const { BCRYPT_WORK_FACTOR } = require("../config");
 
 class User {
+  /** Register user with data. Returns new user data. */
 
-/** Register user with data. Returns new user data. */
-
-  static async register({username, password, first_name, last_name, email, phone}) {
+  static async register({
+    username,
+    password,
+    first_name,
+    last_name,
+    email,
+    phone,
+    isAdmin = false, // SDK - Bug #1 - whether registering a user as an admin needs to be sent in - default to false
+  }) {
     const duplicateCheck = await db.query(
       `SELECT username 
         FROM users 
@@ -16,33 +23,26 @@ class User {
       [username]
     );
 
+    console.log("dup check:", duplicateCheck.rows);
     if (duplicateCheck.rows[0]) {
+      console.log("already such a user");
       throw new ExpressError(
         `There already exists a user with username '${username}'`,
         400
       );
     }
-
     const hashedPassword = await bcrypt.hash(password, BCRYPT_WORK_FACTOR);
-
+    // SDK - Bug #2 - don't return hashed password, security risk, but do return isAdmin status
     const result = await db.query(
       `INSERT INTO users 
-          (username, password, first_name, last_name, email, phone) 
-        VALUES ($1, $2, $3, $4, $5, $6) 
-        RETURNING username, password, first_name, last_name, email, phone`,
-      [
-        username,
-        hashedPassword,
-        first_name,
-        last_name,
-        email,
-        phone
-      ]
+          (username, password, first_name, last_name, email, phone, admin) 
+        VALUES ($1, $2, $3, $4, $5, $6, $7) 
+        RETURNING username, first_name, last_name, email, phone, admin`,
+      [username, hashedPassword, first_name, last_name, email, phone, isAdmin]
     );
 
     return result.rows[0];
   }
-
 
   /** Is this username + password combo correct?
    *
@@ -69,7 +69,7 @@ class User {
     if (user && (await bcrypt.compare(password, user.password))) {
       return user;
     } else {
-      throw new ExpressError('Cannot authenticate', 401);
+      throw new ExpressError("Cannot authenticate", 401);
     }
   }
 
@@ -113,7 +113,7 @@ class User {
     const user = result.rows[0];
 
     if (!user) {
-      new ExpressError('No such user', 404);
+      new ExpressError("No such user", 404);
     }
 
     return user;
@@ -129,9 +129,9 @@ class User {
 
   static async update(username, data) {
     let { query, values } = sqlForPartialUpdate(
-      'users',
+      "users",
       data,
-      'username',
+      "username",
       username
     );
 
@@ -139,7 +139,7 @@ class User {
     const user = result.rows[0];
 
     if (!user) {
-      throw new ExpressError('No such user', 404);
+      throw new ExpressError("No such user", 404);
     }
 
     return user;
@@ -153,13 +153,13 @@ class User {
 
   static async delete(username) {
     const result = await db.query(
-      'DELETE FROM users WHERE username = $1 RETURNING username',
+      "DELETE FROM users WHERE username = $1 RETURNING username",
       [username]
     );
     const user = result.rows[0];
 
     if (!user) {
-      throw new ExpressError('No such user', 404);
+      throw new ExpressError("No such user", 404);
     }
 
     return true;

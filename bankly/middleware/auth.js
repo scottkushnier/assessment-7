@@ -1,7 +1,7 @@
 /** Middleware for handling req authorization for routes. */
 
-const jwt = require('jsonwebtoken');
-const { SECRET_KEY } = require('../config');
+const jwt = require("jsonwebtoken");
+const { SECRET_KEY } = require("../config");
 
 /** Authorization Middleware: Requires user is logged in. */
 
@@ -10,7 +10,7 @@ function requireLogin(req, res, next) {
     if (req.curr_username) {
       return next();
     } else {
-      return next({ status: 401, message: 'Unauthorized' });
+      return next({ status: 401, message: "Unauthorized" });
     }
   } catch (err) {
     return next(err);
@@ -24,7 +24,7 @@ function requireAdmin(req, res, next) {
     if (req.curr_admin) {
       return next();
     } else {
-      return next({ status: 401, message: 'Unauthorized' });
+      return next({ status: 401, message: "Unauthorized" });
     }
   } catch (err) {
     return next(err);
@@ -46,7 +46,9 @@ function requireAdmin(req, res, next) {
 
 function authUser(req, res, next) {
   try {
-    const token = req.body._token || req.query._token;
+    // const token = req.body._token || req.query._token;
+    // SDK - Bug #3 - _token should be stored in header - security risk
+    const token = req.headers._token;
     if (token) {
       let payload = jwt.decode(token);
       req.curr_username = payload.username;
@@ -54,13 +56,15 @@ function authUser(req, res, next) {
     }
     return next();
   } catch (err) {
-    err.status = 401;
-    return next(err);
+    // SDK - Bug #6 - if something goes wrong here, it's not unauthorized
+    // if were unauthorized, would be missing token & just continue without
+    // if error happens here, label appropriately
+    next({ status: 500, message: "Server error" });
   }
 } // end
 
 module.exports = {
   requireLogin,
   requireAdmin,
-  authUser
+  authUser,
 };
